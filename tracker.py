@@ -25,8 +25,8 @@ def fetch_html(url: str) -> str:
 
 def parse_players(html: str) -> Dict[str, str]:
     """
-    Liefert Mapping Spielername -> Gildenname
-    Leerer String wenn keine Gilde angezeigt wird
+    Returns mapping player_name -> guild_name
+    Empty string if no guild is displayed
     """
     soup = BeautifulSoup(html, "html.parser")
     result: Dict[str, str] = {}
@@ -71,35 +71,34 @@ def save_state(path: Path, data: Dict[str, str]) -> None:
 
 def diff_guilds(old: Dict[str, str], new: Dict[str, str]) -> List[str]:
     """
-    Meldungen nur für Spieler, die im aktuellen Snapshot vorkommen
-    Abwesenheit löst keine Änderung aus
+    Creates messages only for players present in the current snapshot.
+    Missing players are ignored (offline players are not treated as guildless).
     """
     messages: List[str] = []
     for name, new_guild in new.items():
         old_guild = old.get(name, None)
 
         if old_guild is None:
-            # Neuer Spieler im Tracking
             if new_guild:
-                messages.append(f"🟢 {name} ist der Gilde {new_guild} beigetreten.")
+                messages.append(f"🟢 **{name}** joined **{new_guild}**.")
             continue
 
         if old_guild == new_guild:
             continue
 
         if old_guild and not new_guild:
-            messages.append(f"🔴 {name} hat die Gilde {old_guild} verlassen.")
+            messages.append(f"🔴 **{name}** left **{old_guild}**.")
         elif not old_guild and new_guild:
-            messages.append(f"🟢 {name} ist der Gilde {new_guild} beigetreten.")
+            messages.append(f"🟢 **{name}** joined **{new_guild}**.")
         else:
-            messages.append(f"🟡 {name} ist von {old_guild} zu {new_guild} gewechselt.")
+            messages.append(f"🟡 **{name}** changed guild from **{old_guild}** to **{new_guild}**.")
 
     return messages
 
 def merge_state(old: Dict[str, str], snapshot: Dict[str, str]) -> Dict[str, str]:
     """
-    Abwesenheit behält den alten Stand
-    Werte aus dem Snapshot überschreiben nur die Spieler, die aktuell sichtbar sind
+    Keeps old state for players not currently visible.
+    Updates only those found in the current snapshot.
     """
     merged = dict(old)
     for name, guild in snapshot.items():
@@ -116,21 +115,21 @@ def post_to_discord(webhook_url: str, messages: List[str]) -> None:
 
 def main() -> int:
     if not DISCORD_WEBHOOK_URL:
-        print("Environment DISCORD_WEBHOOK_URL fehlt", file=sys.stderr)
+        print("Environment DISCORD_WEBHOOK_URL is missing", file=sys.stderr)
 
     try:
         html = fetch_html(URL)
         current = parse_players(html)
     except Exception as e:
-        print(f"Fehler beim Abruf oder Parsing. {e}", file=sys.stderr)
+        print(f"Error while fetching or parsing HTML. {e}", file=sys.stderr)
         return 1
 
     old = load_state(STATE_PATH)
 
-    # Erste Initialisierung ohne Posts
+    # First run: set baseline, no posts
     if not old:
         save_state(STATE_PATH, current)
-        print("Baseline gesetzt")
+        print("Baseline created")
         return 0
 
     messages = diff_guilds(old, current)
@@ -139,23 +138,22 @@ def main() -> int:
         if DISCORD_WEBHOOK_URL and messages:
             post_to_discord(DISCORD_WEBHOOK_URL, messages)
     except Exception as e:
-        print(f"Discord Webhook Fehler. {e}", file=sys.stderr)
+        print(f"Discord Webhook error. {e}", file=sys.stderr)
 
-    # Zustand zusammenführen
     merged = merge_state(old, current)
 
     try:
         save_state(STATE_PATH, merged)
     except Exception as e:
-        print(f"Fehler beim Speichern von players.json. {e}", file=sys.stderr)
+        print(f"Error while saving players.json. {e}", file=sys.stderr)
         return 1
 
     if messages:
-        print("Änderungen")
+        print("Changes detected:")
         for m in messages:
             print(m)
     else:
-        print("Keine Änderungen")
+        print("No changes")
 
     return 0
 
