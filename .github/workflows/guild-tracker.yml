@@ -33,7 +33,7 @@ jobs:
         run: |
           python tracker.py
 
-      - name: Commit players.json wenn geändert
+      - name: Commit players.json if changed
         run: |
           if [[ -n "$(git status --porcelain)" ]]; then
             git config user.name "github-actions[bot]"
@@ -42,5 +42,5 @@ jobs:
             git commit -m "Update players.json"
             git push
           else
-            echo "Nichts zu committen"
+            echo "No changes to commit"
           fi
